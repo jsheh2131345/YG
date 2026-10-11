@@ -1,39 +1,39 @@
--- ============================================
--- PG SCRIPT - 综合版
+--============================================
+--PG脚本-综合版
 -- 自动格挡（v8.0.0 核心）+ 基础作弊 + 修机 + 可视化
--- ============================================
+--============================================
 
--- ============================================
+--============================================
 -- 库加载
--- ============================================
-local repo = "https://raw.githubusercontent.com/SyndromeXph/Obsidian/refs/heads/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+--============================================
+本地回购="https://raw.githubusercontent.com/SyndromeXph/Obsidian/refs/heads/main/"回购="https://raw.githubusercontent.com/SyndromeXph/Obsidian/refs/heads/main/"
+本地库=载荷串(游戏：HttpGet(repo.."Library.lua"()()库存=载货串(游戏：HttpGet(repo.."Library.lua"))()
+本地ThemeManager=loadstring(游戏：HttpGet(repo.."addons/ThemeManager.lua"))()ThemeManager=loadstring(游戏：HttpGet(repo.."addons/ThemeManager.lua"))()
+本地SaveManager=loadstring(游戏：HttpGet(repo.."addons/SaveManager.lua"))()SaveManager=loadstring(游戏：HttpGet(repo.."addons/SaveManager.lua"))()
 
-local Options = Library.Options
-local Toggles = Library.Toggles
+本地选项=库.选项options=Library.Options
+本地切换=库.切换togles=Library.Toggles
 
-Library.ForceCheckbox = false
-Library.ShowToggleFrameInKeybinds = true
+Library.Force复选框=假的
+Library.ShowToggleFrameInKeybinds=truetrue
 
--- ============================================
+--============================================
 -- 服务
--- ============================================
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
+--============================================
+本地玩家=游戏：GetService(“玩家”)玩家=游戏：GetService("玩家")
+本地RunService=game:GetService("运行服务")RunService=game:GetService("运行服务")
+本地UserInputService=game:GetService("UserInputService")UserInputService=game:GetService("UserInputService")
+本地复制存储=游戏：GetService("复制存储")ReplicatedStorage=游戏：GetService("ReplicatedStorage")
+当地的LocalPlayer=players.LocalPlayer LocalPlayer=players.LocalPlayer
 
--- ============================================
+--============================================
 -- 清理旧连接
--- ============================================
-if getgenv().ExistingConnections then
-    for _, conn in ipairs(getgenv().ExistingConnections) do
-        pcall(function() conn:Disconnect() end)
-    end
-end
+--============================================
+如果getgenv().ExistingConnections然后getgenv().ExistingConnections然后
+为_，conn在...内ipairs(getgenv()。ExistingConnections)dofor_，conn在。..内ipairs(getgenv()。ExistingConnections)做
+pcall(功能()conn：断开()结束)功能()conn：断开()结束)
+结束结束
+结束
 getgenv().ExistingConnections = {}
 
 -- ============================================
