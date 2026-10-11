@@ -680,4 +680,576 @@ getgenv().UpdateFixedVisualization = function(visData, myRoot)
         local t = (i - 2) / math.max(1, segments - 1)
         local currentAngle = -angleRad / 2 + angleRad * t
         local direction = forward * math.cos(currentAngle) + right * math.sin(currentAngle)
-        visData.parts[i].Position = killerRoot.Position + Vector3.new
+        visData.parts[i].Position = killerRoot.Position + Vector3.new(0, 0.1, 0) + direction * distance
+    end
+    local shouldBlock = getgenv().CheckAllBlockConditions(myRoot, killerRoot)
+    local color = shouldBlock and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(100, 100, 255)
+    for _, part in ipairs(visData.parts) do part.Color = color end
+end
+
+getgenv().UpdateBoxVisualization = function(visData, myRoot)
+    if not visData or not visData.folder or not visData.folder.Parent then return end
+    if not myRoot or not visData.killer or not visData.killer:FindFirstChild("HumanoidRootPart") then return end
+    local killerRoot = visData.killer.HumanoidRootPart
+    local forward = killerRoot.CFrame.LookVector
+    local forwardOffset = forward * (getgenv().BoxLength / 2)
+    local boxPos = killerRoot.Position + forwardOffset
+    visData.box.Size = Vector3.new(getgenv().BoxWidth, 8, getgenv().BoxLength)
+    visData.box.CFrame = CFrame.lookAt(boxPos, boxPos + forward * 100)
+    visData.box.Transparency = getgenv().BoxTransparency
+    local shouldBlock = getgenv().IsPlayerInBox(myRoot, killerRoot) and getgenv().CheckAllBlockConditions(myRoot, killerRoot)
+    visData.box.Color = shouldBlock and getgenv().BoxSafeColor or getgenv().BoxDangerColor
+end
+
+getgenv().UpdateSphereVisualization = function(visData, myRoot)
+    if not visData or not visData.folder or not visData.folder.Parent then return end
+    if not myRoot or not visData.killer or not visData.killer:FindFirstChild("HumanoidRootPart") then return end
+    local killerRoot = visData.killer.HumanoidRootPart
+    visData.sphere.Size = Vector3.new(getgenv().SenseRange * 2, getgenv().SenseRange * 2, getgenv().SenseRange * 2)
+    visData.sphere.CFrame = killerRoot.CFrame
+    local dvec = myRoot.Position - killerRoot.Position
+    local distSq = dvec.X^2 + dvec.Y^2 + dvec.Z^2
+    local shouldBlock = distSq <= getgenv().SenseRangeSq and getgenv().CheckAllBlockConditions(myRoot, killerRoot)
+    visData.sphere.Color = shouldBlock and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end
+
+getgenv().CreateVisualizationForKiller = function(killer)
+    if not killer or not killer:FindFirstChild("HumanoidRootPart") then return nil end
+    if getgenv().VisualizationMode == "指南针" then
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        return getgenv().CreateCompassVisualization(killer, myRoot)
+    elseif getgenv().VisualizationMode == "固定" then
+        return getgenv().CreateFixedVisualization(killer)
+    elseif getgenv().VisualizationMode == "Box" then
+        return getgenv().CreateBoxVisualization(killer)
+    elseif getgenv().VisualizationMode == "球体" then
+        return getgenv().CreateSphereVisualization(killer)
+    end
+    return nil
+end
+
+getgenv().UpdateVisualization = function(visData, myRoot)
+    if not visData then return end
+    if visData.mode == "指南针" then getgenv().UpdateCompassVisualization(visData, myRoot)
+    elseif visData.mode == "固定" then getgenv().UpdateFixedVisualization(visData, myRoot)
+    elseif visData.mode == "Box" then getgenv().UpdateBoxVisualization(visData, myRoot)
+    elseif visData.mode == "球体" then getgenv().UpdateSphereVisualization(visData, myRoot)
+    end
+end
+
+getgenv().AddKillerCircle = function(killer)
+    if not killer:FindFirstChild("HumanoidRootPart") then return end
+    if getgenv().KillerCircles[killer] then return end
+    local innerCirc, outerCirc
+    if getgenv().InnerCircleVisible then
+        innerCirc = Instance.new("CylinderHandleAdornment")
+        innerCirc.Name = "KillerInnerCircle"
+        innerCirc.Adornee = killer.HumanoidRootPart
+        innerCirc.Color3 = Color3.fromRGB(255, 0, 0)
+        innerCirc.AlwaysOnTop = true
+        innerCirc.ZIndex = 1
+        innerCirc.Transparency = 0.6
+        innerCirc.Radius = getgenv().SenseRange
+        innerCirc.Height = 0.1
+        innerCirc.CFrame = CFrame.Angles(math.rad(90), 0, 0)
+        innerCirc.Parent = killer.HumanoidRootPart
+    end
+    if getgenv().OuterCircleVisible then
+        outerCirc = Instance.new("CylinderHandleAdornment")
+        outerCirc.Name = "KillerOuterCircle"
+        outerCirc.Adornee = killer.HumanoidRootPart
+        outerCirc.Color3 = Color3.fromRGB(0, 255, 255)
+        outerCirc.AlwaysOnTop = true
+        outerCirc.ZIndex = 0
+        outerCirc.Transparency = 0.3
+        outerCirc.Radius = getgenv().punchRange
+        outerCirc.Height = 0.1
+        outerCirc.CFrame = CFrame.Angles(math.rad(90), 0, 0)
+        outerCirc.Parent = killer.HumanoidRootPart
+    end
+    local visData = getgenv().CreateVisualizationForKiller(killer)
+    getgenv().KillerCircles[killer] = {innerCircle = innerCirc, outerCircle = outerCirc, visualization = visData}
+end
+
+getgenv().RemoveKillerCircle = function(killer)
+    if getgenv().KillerCircles[killer] then
+        local data = getgenv().KillerCircles[killer]
+        if data.innerCircle then data.innerCircle:Destroy() end
+        if data.outerCircle then data.outerCircle:Destroy() end
+        if data.visualization and data.visualization.folder then data.visualization.folder:Destroy() end
+        getgenv().KillerCircles[killer] = nil
+    end
+end
+
+getgenv().RefreshKillerCircles = function()
+    for _, killer in ipairs(getgenv().KillersFolder:GetChildren()) do
+        if getgenv().InnerCircleVisible or getgenv().OuterCircleVisible then
+            getgenv().AddKillerCircle(killer)
+        else
+            getgenv().RemoveKillerCircle(killer)
+        end
+    end
+end
+
+getgenv().UpdateVisualizationMode = function(newMode)
+    getgenv().VisualizationMode = newMode
+    for killer, data in pairs(getgenv().KillerCircles) do
+        if data.visualization and data.visualization.folder then
+            data.visualization.folder:Destroy()
+        end
+        local newVisData = getgenv().CreateVisualizationForKiller(killer)
+        data.visualization = newVisData
+    end
+end
+
+getgenv().UpdateBoxColors = function()
+    for killer, data in pairs(getgenv().KillerCircles) do
+        if data.visualization and data.visualization.mode == "Box" and data.visualization.box then
+            data.visualization.box.Transparency = getgenv().BoxTransparency
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not (getgenv().InnerCircleVisible or getgenv().OuterCircleVisible) then return end
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    for killer, data in pairs(getgenv().KillerCircles) do
+        if killer:FindFirstChild("HumanoidRootPart") then
+            local killerRoot = killer.HumanoidRootPart
+            if data.innerCircle and data.innerCircle.Parent then
+                data.innerCircle.Radius = getgenv().SenseRange
+                local shouldBlock = getgenv().CheckAllBlockConditions(myRoot, killerRoot)
+                data.innerCircle.Color3 = shouldBlock and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+            end
+            if data.outerCircle and data.outerCircle.Parent then
+                data.outerCircle.Radius = getgenv().punchRange
+                local dvec = killerRoot.Position - myRoot.Position
+                local dist = math.sqrt(dvec.X^2 + dvec.Y^2 + dvec.Z^2)
+                data.outerCircle.Color3 = dist <= getgenv().punchRange and Color3.fromRGB(0, 150, 150) or Color3.fromRGB(0, 100, 100)
+            end
+            if data.visualization then
+                pcall(getgenv().UpdateVisualization, data.visualization, myRoot)
+            end
+        end
+    end
+end)
+
+getgenv().KillersFolder.ChildAdded:Connect(function(killer)
+    if getgenv().InnerCircleVisible or getgenv().OuterCircleVisible then
+        task.spawn(function()
+            local hrp = killer:WaitForChild("HumanoidRootPart", 5)
+            if hrp then getgenv().AddKillerCircle(killer) end
+        end)
+    end
+end)
+
+getgenv().KillersFolder.ChildRemoved:Connect(function(killer)
+    getgenv().RemoveKillerCircle(killer)
+end)
+
+-- ============================================
+-- 基础作弊功能
+-- ============================================
+local function TestSpeedHack()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:WaitForChild("Humanoid")
+    local original = humanoid.WalkSpeed
+    humanoid.WalkSpeed = 100
+    task.delay(5, function()
+        if humanoid and humanoid.Parent then humanoid.WalkSpeed = original end
+    end)
+end
+
+local function TestJumpHack()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:WaitForChild("Humanoid")
+    local original = humanoid.JumpPower
+    humanoid.JumpPower = 200
+    humanoid.UseJumpPower = true
+    task.delay(5, function()
+        if humanoid and humanoid.Parent then humanoid.JumpPower = original end
+    end)
+end
+
+local function TestTeleport()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    root.CFrame = CFrame.new(math.random(-100, 100), 50, math.random(-100, 100))
+end
+
+local noclipConn, flyConn
+local function StartNoclip()
+    if noclipConn then return end
+    noclipConn = RunService.Stepped:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end)
+end
+local function StopNoclip()
+    if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+    local char = LocalPlayer.Character
+    if char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+end
+
+local function StartFly()
+    if flyConn then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char:FindFirstChild("Humanoid")
+    if humanoid then humanoid.PlatformStand = true end
+    flyConn = RunService.RenderStepped:Connect(function()
+        if not root or not root.Parent then return end
+        local cam = workspace.CurrentCamera
+        local moveDir = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+        if moveDir.Magnitude > 0 then root.CFrame = root.CFrame + moveDir.Unit * 2 end
+    end)
+end
+local function StopFly()
+    if flyConn then flyConn:Disconnect(); flyConn = nil end
+    local char = LocalPlayer.Character
+    if char then
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid then humanoid.PlatformStand = false end
+    end
+end
+
+-- ============================================
+-- 修机 / 连接 / 体力
+-- ============================================
+local repairConn, connectConn, staminaConn
+local function FindGenerators()
+    local gens = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and (obj.Name:lower():find("generator") or obj.Name:lower():find("gen")) then
+            table.insert(gens, obj)
+        end
+    end
+    return gens
+end
+
+local function StartQuickRepair()
+    if repairConn then return end
+    repairConn = task.spawn(function()
+        while repairConn do
+            for _, gen in ipairs(FindGenerators()) do
+                for _, d in ipairs(gen:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") then
+                        pcall(function()
+                            d:InputHoldBegin()
+                            task.wait(1.25)
+                            d:InputHoldEnd()
+                        end)
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+local function StopQuickRepair()
+    if repairConn then task.cancel(repairConn); repairConn = nil end
+end
+
+local function StartAutoConnect()
+    if connectConn then return end
+    connectConn = task.spawn(function()
+        while connectConn do
+            for _, obj in ipairs(game:GetDescendants()) do
+                if obj:IsA("TextButton") or obj:IsA("ImageButton") then
+                    local n = obj.Name:lower()
+                    if n:find("connect") or n:find("node") or n:find("wire") then
+                        pcall(function() obj.MouseButton1Click:Fire() end)
+                        task.wait(0.09)
+                    end
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+end
+local function StopAutoConnect()
+    if connectConn then task.cancel(connectConn); connectConn = nil end
+end
+
+local function StartInfiniteStamina()
+    if staminaConn then return end
+    staminaConn = RunService.Heartbeat:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("NumberValue") then
+                local n = obj.Name:lower()
+                if n:find("stamina") or n:find("energy") then obj.Value = 100 end
+            end
+        end
+    end)
+end
+local function StopInfiniteStamina()
+    if staminaConn then staminaConn:Disconnect(); staminaConn = nil end
+end
+
+-- ============================================
+-- 假无敌陷阱
+-- ============================================
+local function FakeGodMode()
+    local char = LocalPlayer.Character
+    if char then
+        pcall(function()
+            char:SetAttribute("Invincible", true)
+            char:SetAttribute("GodMode", true)
+            char:SetAttribute("Immortal", true)
+        end)
+    end
+    task.wait(0.8)
+    local kicked = false
+    for _, obj in ipairs(game:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local n = obj.Name:lower()
+            if n:find("kick") or n:find("ban") then
+                pcall(function()
+                    obj:FireServer(LocalPlayer, "就你还想开无敌😂")
+                    kicked = true
+                end)
+                if kicked then break end
+            end
+        end
+    end
+    if not kicked then
+        task.wait(0.3)
+        pcall(function()
+            LocalPlayer:Kick("就你还想开无敌😂")
+        end)
+    end
+end
+
+-- ============================================
+-- 窗口
+-- ============================================
+local Window = Library:CreateWindow({
+    Title = "PG SCRIPT | V1",
+    Footer = "PG SCRIPT",
+    Icon = "rbxassetid://79732464885756",
+    CornerElements = false,
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local Tabs = {
+    Info = Window:AddTab("公告", "megaphone", "欢迎"),
+    Main = Window:AddTab("主要的", "layers", "基础作弊"),
+    AutoBlock = Window:AddTab("自动格挡", "shield", "Guest 1337 削弱版"),
+    Ability = Window:AddTab("能力", "user-round-pen", "修机 / 连接 / 体力"),
+    Settings = Window:AddTab("设置", "settings", "配置"),
+}
+
+-- ============================================
+-- 公告 Tab
+-- ============================================
+local InfoGroup = Tabs.Info:AddLeftGroupbox("公告", "megaphone")
+InfoGroup:AddLabel("欢迎使用 PG SCRIPT")
+InfoGroup:AddLabel("目前为 V1")
+InfoGroup:AddDivider()
+InfoGroup:AddLabel("作者：灰白")
+
+-- ============================================
+-- 主要的 Tab
+-- ============================================
+local MainGroup = Tabs.Main:AddLeftGroupbox("基础作弊", "zap")
+MainGroup:AddButton({ Text = "测试速度修改", Func = TestSpeedHack })
+MainGroup:AddButton({ Text = "测试跳跃修改", Func = TestJumpHack })
+MainGroup:AddButton({ Text = "测试瞬移", Func = TestTeleport })
+MainGroup:AddToggle("NoclipToggle", {
+    Text = "穿墙", Default = false,
+    Callback = function(v) if v then StartNoclip() else StopNoclip() end end,
+})
+MainGroup:AddToggle("FlyToggle", {
+    Text = "飞行", Default = false,
+    Callback = function(v) if v then StartFly() else StopFly() end end,
+})
+
+-- ============================================
+-- 自动格挡 Tab
+-- ============================================
+local BlockTabBox = Tabs.AutoBlock:AddLeftTabbox()
+local BlockMain = BlockTabBox:AddTab("Block")
+local BlockPunch = BlockTabBox:AddTab("Punch")
+local BlockBox = BlockTabBox:AddTab("Box")
+local BlockMisc = BlockTabBox:AddTab("Misc")
+
+-- Block
+BlockMain:AddToggle("AutoBlockToggle", {
+    Text = "自动格挡", Default = false,
+    Callback = function(v) getgenv().AutoBlockEnabled = v end,
+})
+BlockMain:AddToggle("InnerCircleToggle", {
+    Text = "可视化", Default = false,
+    Callback = function(v)
+        getgenv().InnerCircleVisible = v
+        getgenv().RefreshKillerCircles()
+    end,
+})
+BlockMain:AddDropdown("VisualizationModeDropdown", {
+    Values = {"指南针", "固定", "Box", "球体"}, Default = 1, Multi = false,
+    Text = "可视化模式",
+    Callback = function(v) getgenv().UpdateVisualizationMode(v) end,
+})
+BlockMain:AddToggle("FacingCheck", {
+    Text = "玩家面向检测", Default = false,
+    Callback = function(v) getgenv().FacingCheckEnabled = v end,
+})
+BlockMain:AddToggle("KillerFacingCheck", {
+    Text = "杀手面向检测", Default = false,
+    Callback = function(v) getgenv().KillerFacingCheckEnabled = v end,
+})
+BlockMain:AddToggle("WallCheck", {
+    Text = "Wallcheck", Default = false,
+    Callback = function(v) getgenv().wallCheckEnabled = v end,
+})
+BlockMain:AddSlider("SenseRange", {
+    Text = "格挡范围", Default = 18, Min = 5, Max = 50, Rounding = 1,
+    Callback = function(v)
+        getgenv().SenseRange = v
+        getgenv().SenseRangeSq = v * v
+    end,
+})
+BlockMain:AddSlider("PlayerFacingAngle", {
+    Text = "玩家面向角度", Default = 90, Min = 30, Max = 180, Rounding = 1,
+    Callback = function(v) getgenv().PlayerFacingAngle = v end,
+})
+BlockMain:AddSlider("KillerFacingAngle", {
+    Text = "杀手面向角度", Default = 90, Min = 30, Max = 180, Rounding = 1,
+    Callback = function(v) getgenv().KillerFacingAngle = v end,
+})
+BlockMain:AddSlider("MaxSoundAge", {
+    Text = "最大声音检测时长(秒)", Default = 1.5, Min = 0.5, Max = 5, Rounding = 1,
+    Callback = function(v) getgenv().MaxSoundAge = v end,
+})
+BlockMain:AddSlider("MaxAnimAge", {
+    Text = "最大动画检测时长(秒)", Default = 1.5, Min = 0.5, Max = 5, Rounding = 1,
+    Callback = function(v) getgenv().MaxAnimAge = v end,
+})
+
+-- Punch
+BlockPunch:AddToggle("AutoPunch", {
+    Text = "自动拳击", Default = false,
+    Callback = function(v) getgenv().autoPunchOn = v end,
+})
+BlockPunch:AddToggle("AimbotPunch", {
+    Text = "自瞄拳击", Default = false,
+    Callback = function(v) getgenv().aimbotPunchOn = v end,
+})
+BlockPunch:AddToggle("OuterCircleToggle", {
+    Text = "可视化", Default = false,
+    Callback = function(v)
+        getgenv().OuterCircleVisible = v
+        getgenv().RefreshKillerCircles()
+    end,
+})
+BlockPunch:AddSlider("PunchRange", {
+    Text = "拳击范围", Default = 50, Min = 10, Max = 100, Rounding = 1,
+    Callback = function(v) getgenv().punchRange = v end,
+})
+BlockPunch:AddSlider("AimbotDelay", {
+    Text = "自瞄拳击间隔", Default = 0.1, Min = 0.01, Max = 1, Rounding = 2,
+    Callback = function(v) getgenv().aimbotDelay = v end,
+})
+BlockPunch:AddSlider("FaceKillerDuration", {
+    Text = "持续时间", Default = 3, Min = 1, Max = 10, Rounding = 1,
+    Callback = function(v) getgenv().faceKillerDuration = v end,
+})
+
+-- Box
+BlockBox:AddSlider("BoxLength", {
+    Text = "Box长度", Default = 15, Min = 5, Max = 50, Rounding = 1,
+    Callback = function(v) getgenv().BoxLength = v end,
+})
+BlockBox:AddSlider("BoxWidth", {
+    Text = "Box宽度", Default = 6, Min = 2, Max = 30, Rounding = 1,
+    Callback = function(v) getgenv().BoxWidth = v end,
+})
+BlockBox:AddSlider("BoxTransparency", {
+    Text = "Box透明度", Default = 0.7, Min = 0, Max = 1, Rounding = 2,
+    Callback = function(v)
+        getgenv().BoxTransparency = v
+        getgenv().UpdateBoxColors()
+    end,
+})
+
+-- Misc
+BlockMisc:AddToggle("HDPullToggle", {
+    Text = "格挡拉近 (HDPull)", Default = false,
+    Callback = function(v) getgenv().HDPullEnabled = v end,
+})
+BlockMisc:AddSlider("HDSpeed", {
+    Text = "拉近速度", Default = 12, Min = 5, Max = 50, Rounding = 1,
+    Callback = function(v) getgenv().HDSpeed = v end,
+})
+
+-- ============================================
+-- 能力 Tab
+-- ============================================
+local AbilityGroup = Tabs.Ability:AddLeftGroupbox("修机 / 连接 / 体力", "user-round-pen")
+AbilityGroup:AddToggle("QuickRepairToggle", {
+    Text = "快速修机", Default = false,
+    Callback = function(v) if v then StartQuickRepair() else StopQuickRepair() end end,
+})
+AbilityGroup:AddToggle("AutoConnectToggle", {
+    Text = "自动连接", Default = false,
+    Callback = function(v) if v then StartAutoConnect() else StopAutoConnect() end end,
+})
+AbilityGroup:AddToggle("InfiniteStaminaToggle", {
+    Text = "无限体力", Default = false,
+    Callback = function(v) if v then StartInfiniteStamina() else StopInfiniteStamina() end end,
+})
+AbilityGroup:AddDivider()
+AbilityGroup:AddButton({ Text = "无敌模式", Func = FakeGodMode })
+
+-- ============================================
+-- 设置 Tab
+-- ============================================
+local SettingsGroup = Tabs.Settings:AddLeftGroupbox("Menu")
+SettingsGroup:AddButton("卸载", function()
+    StopNoclip(); StopFly()
+    StopQuickRepair(); StopAutoConnect(); StopInfiniteStamina()
+    getgenv().AutoBlockEnabled = false
+    for _, data in pairs(getgenv().KillerCircles) do
+        if data.innerCircle then data.innerCircle:Destroy() end
+        if data.outerCircle then data.outerCircle:Destroy() end
+        if data.visualization and data.visualization.folder then data.visualization.folder:Destroy() end
+    end
+    Library:Unload()
+end)
+SettingsGroup:AddLabel("Keybind"):AddKeyPicker("MenuKeybind", {
+    Default = "RightShift", NoUI = true, Text = "Menu keybind",
+})
+Library.ToggleKeybind = Options.MenuKeybind
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+ThemeManager:SetFolder("PGSCRIPT")
+SaveManager:SetFolder("PGSCRIPT/Configs")
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+
+print("[PG SCRIPT] 已加载")
