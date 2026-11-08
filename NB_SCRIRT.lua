@@ -1508,3 +1508,259 @@ SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({})
 ThemeManager:SetLibrary(Library)
 SaveManager:Load()
+
+-- ============================================
+-- 自动格挡 5.0 (悬浮窗 + 玩家红圈)
+-- ============================================
+
+local Player5 = game:GetService("Players").LocalPlayer
+local UserInputService5 = game:GetService("UserInputService")
+local RunService5 = game:GetService("RunService")
+local Workspace5 = game:GetService("Workspace")
+local PlayerGui5 = Player5:WaitForChild("PlayerGui")
+
+local Block5Settings = {
+    Enabled = false,
+    Radius = 20,
+}
+
+local AttackSoundIDs_5 = {
+    -- 这里放你刚刚抓到的音效
+    ["92869747208256"] = true,
+    ["95166423060976"] = true,
+}
+
+local AttackAnimIDs_5 = {
+    -- 这里放你刚刚抓到的动画
+    ["18885909645"] = true, ["130958529065375"] = true,
+    ["125403313786645"] = true, ["138938529389204"] = true,
+    ["121293883585738"] = true, ["88451353906104"] = true,
+    ["120950360130737"] = true, ["113281145948084"] = true,
+    ["119021310055322"] = true, ["109725460050273"] = true,
+    ["76052034966793"] = true, ["94165438815708"] = true,
+    ["133738204715506"] = true, ["110467441332666"] = true,
+    ["127916769733604"] = true, ["72623347581545"] = true,
+    ["129001498040521"] = true, ["102776026072549"] = true,
+    ["95721871543232"] = true, ["116888521321180"] = true,
+    ["128939901497877"] = true, ["78078652940310"] = true,
+    ["128072729691985"] = true, ["121138069766020"] = true,
+    ["83274568292003"] = true, ["99865700633726"] = true,
+    ["97208348928006"] = true, ["129919777481535"] = true,
+    ["121982888855786"] = true, ["106334382305365"] = true,
+    ["100972794726219"] = true, ["95029865702251"] = true,
+}
+
+-- ============================================
+-- 核心逻辑
+-- ============================================
+local function executeBlock()
+    local pg = Player5:FindFirstChild("PlayerGui")
+    local main = pg and pg:FindFirstChild("MainUI")
+    local container = main and main:FindFirstChild("AbilityContainer")
+    if not container then return false end
+    
+    local btn = container:FindFirstChild("Block") or container:FindFirstChild("Guard")
+    if not btn then return false end
+    
+    local cd = btn:FindFirstChild("CooldownTime")
+    if cd and cd.Text ~= "" then return false end
+    
+    pcall(function() btn:Activate() end)
+    pcall(function()
+        for _, conn in ipairs(getconnections(btn.MouseButton1Click) or {}) do
+            conn:Fire()
+        end
+    end)
+    return true
+end
+
+-- 检测是否有杀手在圈内
+local function isKillerInRange()
+    local myChar = Player5.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return false end
+    
+    local killersFolder = Workspace5:FindFirstChild("Players") and Workspace5.Players:FindFirstChild("Killers")
+    if not killersFolder then return false end
+    
+    for _, killer in ipairs(killersFolder:GetChildren()) do
+        local hrp = killer:FindFirstChild("HumanoidRootPart")
+        if hrp and (hrp.Position - myRoot.Position).Magnitude <= Block5Settings.Radius then
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================
+-- 脚底圆圈可视化
+-- ============================================
+local circleVisual = Instance.new("Part")
+circleVisual.Name = "Block5_Circle"
+circleVisual.Shape = Enum.PartType.Cylinder
+circleVisual.Anchored = true
+circleVisual.CanCollide = false
+circleVisual.CastShadow = false
+circleVisual.Material = Enum.Material.Neon
+circleVisual.Color = Color3.fromRGB(255, 0, 0) -- 默认红色
+circleVisual.Transparency = 0.5
+circleVisual.Size = Vector3.new(0.1, Block5Settings.Radius * 2, Block5Settings.Radius * 2)
+circleVisual.CFrame = CFrame.new(0, -10, 0) * CFrame.Angles(0, 0, math.rad(90))
+circleVisual.Parent = Workspace5
+
+RunService5.RenderStepped:Connect(function()
+    if not Block5Settings.Enabled then
+        circleVisual.Transparency = 1
+        return
+    end
+    
+    local myChar = Player5.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if myRoot then
+        -- 位置更新
+        circleVisual.CFrame = CFrame.new(myRoot.Position - Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+        circleVisual.Size = Vector3.new(0.1, Block5Settings.Radius * 2, Block5Settings.Radius * 2)
+        circleVisual.Transparency = 0.6
+        
+        -- 颜色更新 (圈内有杀手变绿，否则红)
+        if isKillerInRange() then
+            circleVisual.Color = Color3.fromRGB(0, 255, 0)
+        else
+            circleVisual.Color = Color3.fromRGB(255, 0, 0)
+        end
+    else
+        circleVisual.Transparency = 1
+    end
+end)
+
+-- ============================================
+-- 监听攻击触发格挡
+-- ============================================
+local function hookSound5(snd)
+    if not snd:IsA("Sound") then return end
+    snd.Played:Connect(function()
+        if not Block5Settings.Enabled then return end
+        if not isKillerInRange() then return end -- 没在圈内不挡
+        
+        local id = tostring(snd.SoundId):match("%d+")
+        if id and AttackSoundIDs_5[id] then
+            executeBlock()
+        end
+    end)
+end
+
+local function hookKiller5(killerModel)
+    local h = killerModel:FindFirstChildOfClass("Humanoid")
+    local animator = h and h:FindFirstChildOfClass("Animator")
+    if animator then
+        animator.AnimationPlayed:Connect(function(track)
+            if not Block5Settings.Enabled then return end
+            if not isKillerInRange() then return end -- 没在圈内不挡
+            
+            local id = track.Animation.AnimationId:match("%d+")
+            if id and AttackAnimIDs_5[id] then
+                executeBlock()
+            end
+        end)
+    end
+end
+
+local function bindKillers5()
+    for _, snd in ipairs(Workspace5:GetDescendants()) do
+        if snd:IsA("Sound") then hookSound5(snd) end
+    end
+    
+    local kf = Workspace5:FindFirstChild("Players") and Workspace5.Players:FindFirstChild("Killers")
+    if kf then
+        for _, m in ipairs(kf:GetChildren()) do
+            if m:IsA("Model") then hookKiller5(m) end
+        end
+        kf.ChildAdded:Connect(function(m)
+            if m:IsA("Model") then
+                task.wait(0.5)
+                hookKiller5(m)
+            end
+        end)
+    end
+end
+
+Workspace5.DescendantAdded:Connect(function(obj)
+    if obj:IsA("Sound") then hookSound5(obj) end
+end)
+bindKillers5()
+
+-- ============================================
+-- 悬浮窗 UI
+-- ============================================
+local floatGui = Instance.new("ScreenGui")
+floatGui.Name = "Block5_Float"
+floatGui.ResetOnSpawn = false
+floatGui.DisplayOrder = 999
+floatGui.Parent = PlayerGui5
+
+local floatBtn = Instance.new("TextButton")
+floatBtn.Size = UDim2.new(0, 50, 0, 50)
+floatBtn.Position = UDim2.new(0, 100, 0.5, 0) -- 初始位置
+floatBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- 关：红
+floatBtn.Text = "格挡"
+floatBtn.TextColor3 = Color3.new(1, 1, 1)
+floatBtn.Font = Enum.Font.GothamBold
+floatBtn.TextSize = 14
+floatBtn.AutoButtonColor = false
+floatBtn.Parent = floatGui
+
+local floatCorner = Instance.new("UICorner")
+floatCorner.CornerRadius = UDim.new(1, 0) -- 变成圆形
+floatCorner.Parent = floatBtn
+
+local floatStroke = Instance.new("UIStroke")
+floatStroke.Color = Color3.new(1, 1, 1)
+floatStroke.Thickness = 2
+floatStroke.Parent = floatBtn
+
+-- 防误触拖动逻辑
+local dragging, dragInput, dragStart, startPos
+local wasDragged = false
+
+floatBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        wasDragged = false
+        dragStart = input.Position
+        startPos = floatBtn.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService5.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging then
+            local delta = input.Position - dragStart
+            if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
+                wasDragged = true
+            end
+            floatBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end
+end)
+
+-- 纯点击触发
+floatBtn.MouseButton1Click:Connect(function()
+    if wasDragged then return end -- 如果刚刚在拖动，就不算点击
+    
+    Block5Settings.Enabled = not Block5Settings.Enabled
+    
+    if Block5Settings.Enabled then
+        floatBtn.BackgroundColor3 = Color3.fromRGB(50, 255, 50) -- 开：绿
+        floatBtn.Text = "已开启"
+    else
+        floatBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- 关：红
+        floatBtn.Text = "格挡"
+    end
+end)
